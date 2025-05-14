@@ -1,23 +1,26 @@
 import numpy as np
+import matplotlib.pyplot as plt
 
 # Physical variables
 
 density = 0.20
+D = 4
 
 # Non-physical parameters
 
-sidepartnum = 7
+sidepartnum = 5
 accratio = 0.3
 iterations = 10_000  # recomendation: 1000 N
 drmax = 1
 
-partnum = sidepartnum ** 3
-boxlen = np.cbrt(partnum / density)
+partnum = sidepartnum ** D
+boxlen = (partnum / density)**(1/D)
 conf = np.array([
-    (np.array([i, j, k]) + 0.5) * boxlen / sidepartnum
+    (np.array([i, j, k, l]) + 0.5) * density**(-1/D)
     for i in range(sidepartnum)
     for j in range(sidepartnum)
     for k in range(sidepartnum)
+    for l in range(sidepartnum)
 ])
 
 # Utils
@@ -30,6 +33,7 @@ ____________________________________
 ____________________________________
 
 
+D = {D}
 N = {partnum}
 d = {density}
 L = {boxlen}
@@ -48,7 +52,6 @@ def ljpot(r):
     invr6 = (1 / r) ** 6
     return 4 * (invr6 ** 2 - invr6)
 
-
 def pairpot(r1, r2):
     rvec = r2 - r1
     rvec -= boxlen * np.round(rvec / boxlen)
@@ -63,7 +66,7 @@ def partener(n):
 
 def totener():
     energies = np.array([ partener(n) for n in range(partnum) ])
-    return np.sum(energies)
+    return 0.5 * np.sum(energies)
 
 
 # Motion
@@ -72,7 +75,7 @@ def boundcond():
     conf[np.any(conf > boxlen, axis=1)] %= boxlen
 
 def movepart(n):
-    v = np.random.randn(3)
+    v = np.random.randn(D)
     u = v / np.linalg.norm(v)
     dr = u * np.random.rand() * drmax
     conf[n] += dr
@@ -90,49 +93,60 @@ def adjustdr(ratio):
     global drmax
     drmax *= 1.05 if ratio > accratio else 0.95
 
-def sampling():
+def sampling(iterations):
     chain = []
-
     energy = totener()
-    j = 0
-    for i in range(iterations):
-        n = np.random.randint(0, partnum)
+    accepteds = 0
+    for tries in range(1, iterations + 1):
+        n = np.random.randint(partnum)
         initpos = conf[n].copy()
         initener = partener(n)
         movepart(n)
-        newener = partener(n)
+        finalener = partener(n)
 
-        diffener = newener - initener
+        diffener = finalener - initener
 
-        if np.exp(-diffener) > np.random.rand():
-            j += 1
+        if diffener < 0 or np.exp(-diffener) > np.random.rand():
             energy += diffener
-            #chain.append(conf.copy())
             chain.append(energy)
+            accepteds += 1
         else:
             conf[n] = initpos.copy()
 
-        adjustdr(j / (i + 1))
-        if i % 100 == 0:
-            print(f'{i}\t{energy}\t{drmax}\t{j / (i + 1)}')
+        if tries % 100 == 0:
+            ratio = accepteds / tries
+            #adjustdr(ratio)
+            print(f'{tries}\t{energy}\t{drmax}\t{ratio}')
 
     return chain
+
+# Plots
+
+def plot(conf):
+    fig, axs = plt.subplots(4, 4, layout="constrained")
+    pairs = [ (i, j) for i in range(4) for j in range(4) if j < i ]
+    for pair in pairs:
+        axs[pair[0], pair[1]].set_title(f'Plane {pair[0]}{pair[1]}')
+        axs[pair[0], pair[1]].scatter(conf[:, pair[0]], conf[:, pair[1]])
+    plt.show()
+
+def plotheat(conf):
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection='3d')
+
+    x = conf[:, 0]
+    y = conf[:, 1]
+    z = conf[:, 2]
+    c = conf[:, 3]
+
+    img = ax.scatter(x, y, z, c=c, cmap=plt.hot())
+    fig.colorbar(img)
+    plt.show()
 
 # main
 
 banner()
-chain = sampling()
-import matplotlib.pyplot as plt
-from matplotlib import animation
+chain = sampling(1000)
+plot(conf)
 
-def plot(chain):
-    ax = plt.figure().add_subplot(projection='3d')
-    x = chain[:, 0]
-    y = chain[:, 1]
-    z = chain[:, 2]
-    ax.scatter(x, y, z)
-    plt.show()
-
-plt.plot(chain)
-plt.show()
 
