@@ -1,26 +1,26 @@
+import math
 import numpy as np
+import itertools
 import matplotlib.pyplot as plt
 
 # Physical variables
 
-density = 0.20
 D = 4
+packfrac = 0.30
 
 # Non-physical parameters
 
 sidepartnum = 5
+
 accratio = 0.3
-iterations = 10_000  # recomendation: 1000 N
 drmax = 1
 
+density = packfrac / (np.pi**(D/2) * (1/2)**D / math.gamma(D/2 + 1))
 partnum = sidepartnum ** D
 boxlen = (partnum / density)**(1/D)
 conf = np.array([
-    (np.array([i, j, k, l]) + 0.5) * density**(-1/D)
-    for i in range(sidepartnum)
-    for j in range(sidepartnum)
-    for k in range(sidepartnum)
-    for l in range(sidepartnum)
+    (np.array(index) + 0.5) * density**(-1/D)
+    for index in itertools.product(range(sidepartnum), repeat=D)
 ])
 
 # Utils
@@ -42,31 +42,25 @@ L = {boxlen}
 
 # Energy
 
-def gravpot(r):
-    return 1 / r**2
-
-def hspot(r):
-    return np.inf if r < 1 else 0
-
-def ljpot(r):
-    invr6 = (1 / r) ** 6
-    return 4 * (invr6 ** 2 - invr6)
-
-def pairpot(r1, r2):
-    rvec = r2 - r1
-    rvec -= boxlen * np.round(rvec / boxlen)
-    r = np.linalg.norm(rvec)
-    return ljpot(r) if r < boxlen / 2 else 0
-
 def partener(n):
-    r = conf[n]
-    otherparts = np.delete(conf, n, axis=0)
-    energies = np.apply_along_axis(lambda _: pairpot(_, r), 1, otherparts)
-    return np.sum(energies)
+    rn = conf[n]
+    rvec = conf - rn
+    rvec = rvec[np.arange(partnum) != n]
+    rvec -= boxlen * np.round(rvec / boxlen)
+    r = np.linalg.norm(rvec, axis=1)
+
+    u = np.zeros(partnum - 1)
+    dl = 50
+    dT = 1.4737
+    mask = r <= dl / (dl - 1)
+    r = r[mask]
+    u[mask] = ((dl * ( dl / (dl - 1))**(dl - 1))  / dT) * ((1 / r)**dl - (1 / r)**(dl - 1)) + 1 / dT
+
+    return np.sum(u)
 
 def totener():
     energies = np.array([ partener(n) for n in range(partnum) ])
-    return 0.5 * np.sum(energies)
+    return .5 * np.sum(energies)
 
 
 # Motion
@@ -94,7 +88,9 @@ def adjustdr(ratio):
     drmax *= 1.05 if ratio > accratio else 0.95
 
 def sampling(iterations):
-    chain = []
+    enerchain = []
+    confchain = []
+
     energy = totener()
     accepteds = 0
     for tries in range(1, iterations + 1):
@@ -108,26 +104,44 @@ def sampling(iterations):
 
         if diffener < 0 or np.exp(-diffener) > np.random.rand():
             energy += diffener
-            chain.append(energy)
+            enerchain.append(energy)
+            confchain.append(conf)
             accepteds += 1
+            if accepteds % partnum == 1:
+                enerchain.append(energy)
+                confchain.append(conf.copy())
         else:
             conf[n] = initpos.copy()
 
+        ratio = accepteds / tries
+        adjustdr(ratio)
+
         if tries % 100 == 0:
-            ratio = accepteds / tries
-            #adjustdr(ratio)
             print(f'{tries}\t{energy}\t{drmax}\t{ratio}')
 
-    return chain
+    return np.array(enerchain), np.array(confchain)
 
 # Plots
 
+def plothist(data, ax):
+    counts, bins = np.histogram(data, bins=20)
+    bin_centers = (bins[:-1] + bins[1:]) / 2
+    bin_width = bins[1] - bins[0]
+    ax.bar(bin_centers, counts, width=bin_width, edgecolor='black')
+
 def plot(conf):
-    fig, axs = plt.subplots(4, 4, layout="constrained")
-    pairs = [ (i, j) for i in range(4) for j in range(4) if j < i ]
+    fig, axs = plt.subplots(D, D, layout="constrained") 
+    pairs = [ (i, j) for i in range(D) for j in range(D) if j < i ]
     for pair in pairs:
         axs[pair[0], pair[1]].set_title(f'Plane {pair[0]}{pair[1]}')
-        axs[pair[0], pair[1]].scatter(conf[:, pair[0]], conf[:, pair[1]])
+        axs[pair[0], pair[1]].scatter(
+            conf[:, pair[0]],
+            conf[:, pair[1]],
+            marker='.',
+            alpha=0.5
+            )
+    for i in range(D):
+        plothist(conf[:, i], axs[i, i])
     plt.show()
 
 def plotheat(conf):
@@ -146,7 +160,4 @@ def plotheat(conf):
 # main
 
 banner()
-chain = sampling(1000)
-plot(conf)
-
-
+enerchain, confchain = sampling(100_000)
