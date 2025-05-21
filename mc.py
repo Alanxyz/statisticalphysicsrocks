@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 # Physical variables
 
 D = 4
-packfrac = 0.30
+packfrac = 0.10
 
 # Non-physical parameters
 
@@ -15,7 +15,7 @@ sidepartnum = 5
 accratio = 0.3
 drmax = 1
 
-density = packfrac / (np.pi**(D/2) * (1/2)**D / math.gamma(D/2 + 1))
+density = 2**D * packfrac * np.pi**(-D/2) * math.gamma(D/2 + 1)
 partnum = sidepartnum ** D
 boxlen = (partnum / density)**(1/D)
 conf = np.array([
@@ -130,7 +130,7 @@ def plothist(data, ax):
     ax.bar(bin_centers, counts, width=bin_width, edgecolor='black')
 
 def plot(conf):
-    fig, axs = plt.subplots(D, D, layout="constrained") 
+    fig, axs = plt.subplots(D, D, layout="constrained")
     pairs = [ (i, j) for i in range(D) for j in range(D) if j < i ]
     for pair in pairs:
         axs[pair[0], pair[1]].set_title(f'Plane {pair[0]}{pair[1]}')
@@ -142,7 +142,8 @@ def plot(conf):
             )
     for i in range(D):
         plothist(conf[:, i], axs[i, i])
-    plt.show()
+    #plt.show()
+    plt.savefig("fig.png")
 
 def plotheat(conf):
     fig = plt.figure()
@@ -155,9 +156,10 @@ def plotheat(conf):
 
     img = ax.scatter(x, y, z, c=c, cmap=plt.hot())
     fig.colorbar(img)
-    plt.show()
+    plt.savefig("fig.png")
 
 # main
 
 banner()
 enerchain, confchain = sampling(100_000)
+plot(conf)
